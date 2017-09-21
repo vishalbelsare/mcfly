@@ -50,7 +50,7 @@ class dash:
                 html = HTML(link)
                 display(html)
             else:
-                raise("Monitor_type should be tensorboard, hera or None")
+                raise("Monitor_type should be tensorboard or None")
             #####
             return True
         elif (dashboard_phase == 'update'):
