@@ -19,11 +19,54 @@ import os
 from keras.callbacks import EarlyStopping
 from keras import metrics
 
+import subprocess
+from time import time
+from keras.callbacks import TensorBoard
+# requires tensorflow.tensorboard
+class dash:
+    model_num = 0 
+    base_dir = None
+    log_dir = None
+    def __init__(self, base_dir = os.path.join(os.getcwd(), '../../data/logs'), model_num_init = 0):
+        self.base_dir = base_dir
+        self.log_dir = None
+        self.model_num = model_num_init
+        if not os.path.exists(self.base_dir):
+            os.makedirs(self.base_dir); 
+
+    def start_dashboard(self, dashboard_phase = "start", monitor_type = "tensorboard", refresh_rate = 5):
+        if(dashboard_phase == 'start'):
+            #self.log_dir = os.path.join(os.getcwd(), '../../data/logs')
+            if monitor_type == "tensorboard":   # NOT WORKING ATM, https://github.com/tensorflow/tensorboard
+                from IPython.display import display, HTML
+                import subprocess
+                subprocess.Popen(["python", "-m", "tensorflow.tensorboard", "--logdir="+self.base_dir, "--reload_interval="+str(refresh_rate)])
+                self.log_dir = self.base_dir+"/{}".format(time())
+                if not os.path.exists(self.log_dir):
+                    os.makedirs(self.log_dir)
+                else:
+                    raise("The exact same director already exist! Very strange..")
+                link = "<a href='http://localhost:6006' target='_blank'> Click here to view the dashboard </a>"
+                html = HTML(link)
+                display(html)
+            else:
+                raise("Monitor_type should be tensorboard, hera or None")
+            #####
+            return True
+        elif (dashboard_phase == 'update'):
+            if(monitor_type == 'tensorboard'):
+                curr_dir = self.log_dir+"/model_"+str(self.model_num)
+                os.makedirs(curr_dir)
+                monitor_callback = TensorBoard(log_dir = curr_dir, histogram_freq = None, write_graph = True, write_images = False, 
+                                               write_grads = False)
+            #####
+            return monitor_callback
+
 
 def train_models_on_samples(X_train, y_train, X_val, y_val, models,
                             nr_epochs=5, subset_size=100, verbose=True, outputfile=None,
                             model_path=None, early_stopping=False,
-                            batch_size=20, metric='accuracy'):
+                            batch_size=20, metric='accuracy', monitor_type =  None):
     """
     Given a list of compiled models, this function trains
     them all on a subset of the train data. If the given size of the subset is
@@ -57,6 +100,8 @@ def train_models_on_samples(X_train, y_train, X_val, y_val, models,
         nr of samples per batch
     metric : str
         metric to store in the history object
+    monitor_type : str, optional
+        dashboard type for progress monitoring, options are: [None, tensorboard]
 
     Returns
     ----------
@@ -73,6 +118,11 @@ def train_models_on_samples(X_train, y_train, X_val, y_val, models,
 
     metric_name = get_metric_name(metric)
 
+    refresh_rate = 5
+    if(monitor_type is not None):
+        Dash = dash()
+        Dash.start_dashboard(dashboard_phase = 'start', monitor_type = monitor_type, refresh_rate = refresh_rate)    
+
     histories = []
     val_metrics = []
     val_losses = []
@@ -83,11 +133,18 @@ def train_models_on_samples(X_train, y_train, X_val, y_val, models,
         if metric_name not in model_metrics:
             raise ValueError(
                 'Invalid metric. The model was not compiled with {} as metric'.format(metric_name))
+
         if early_stopping:
             callbacks = [
                 EarlyStopping(monitor='val_loss', patience=0, verbose=verbose, mode='auto')]
         else:
             callbacks = []
+
+        if monitor_type is not None:
+            Dash.model_num = i
+            monitor_callback = Dash.start_dashboard(dashboard_phase = 'update', monitor_type = monitor_type)
+            callbacks.append(monitor_callback)
+
         history = model.fit(X_train_sub, y_train_sub,
                             epochs=nr_epochs, batch_size=batch_size,
                             # see comment on subsize_set
